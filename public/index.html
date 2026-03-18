@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Teste S3 Estacas</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <p class="eyebrow">Teste de Integracao</p>
+        <h1>Consulta de estacas no S3</h1>
+        <p class="lead">
+          Informe o login do cliente, o IMEI da CPU Saci e a data para verificar
+          se o backend consegue listar os arquivos da estaca no bucket configurado.
+        </p>
+      </section>
+
+      <section class="card">
+        <div class="actions">
+          <div class="action-buttons">
+            <button id="healthButton" type="button">Testar conexao com bucket</button>
+            <button id="pdfButton" type="button">Baixar diario PDF</button>
+          </div>
+          <span id="healthStatus" class="muted">Aguardando teste.</span>
+        </div>
+
+        <form id="searchForm" class="form">
+          <label>
+            Maquina salva
+            <select id="machineSelect" name="machineSelect"></select>
+          </label>
+
+          <label>
+            Cliente
+            <input
+              id="clientLogin"
+              name="clientLogin"
+              type="text"
+              placeholder="cgontijo"
+              required
+            />
+          </label>
+
+          <label>
+            IMEI
+            <input
+              id="imei"
+              name="imei"
+              type="text"
+              inputmode="numeric"
+              pattern="[0-9]{15}"
+              maxlength="15"
+              placeholder="352622021150631"
+              required
+            />
+          </label>
+
+          <label>
+            Data
+            <input id="date" name="date" type="date" required />
+          </label>
+
+          <button id="submitButton" type="submit">Buscar estacas</button>
+        </form>
+        <div class="weekly-bar">
+          <label>
+            Semana
+            <input id="weekInput" name="weekInput" type="week" />
+          </label>
+          <button id="weeklyButton" type="button">Buscar estacas da semana</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="result-head">
+          <h2>Cadastro de Maquinas</h2>
+          <span id="machineStatus" class="muted">Lista padrao carregada.</span>
+        </div>
+        <p class="result-hint">
+          Edite a lista abaixo no formato <code>NOME=IMEI</code>, uma linha por maquina. As alteracoes ficam salvas no navegador.
+        </p>
+        <textarea id="machinesEditor" class="machines-editor" spellcheck="false"></textarea>
+        <div class="action-buttons top-gap">
+          <button id="saveMachinesButton" type="button">Salvar maquinas</button>
+          <button id="resetMachinesButton" type="button" class="secondary-button">Restaurar padrao</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="result-head">
+          <h2>Resultado</h2>
+          <span id="resultMeta" class="muted">Nenhuma consulta executada.</span>
+        </div>
+        <div id="querySummary" class="query-summary">
+          Cliente: -
+          IMEI: -
+          Data: -
+          Prefixo: -
+        </div>
+        <p id="resultHint" class="result-hint">
+          Aguardando consulta.
+        </p>
+        <div id="tableWrap" class="table-wrap is-hidden">
+          <table class="results-table">
+            <thead>
+              <tr>
+                <th>Pilar/Estaca</th>
+                <th>Diametro (cm)</th>
+                <th>Realizado (m)</th>
+                <th>Fim</th>
+                <th>Contrato</th>
+                <th>Obra</th>
+                <th>Acao</th>
+              </tr>
+            </thead>
+            <tbody id="resultsTableBody"></tbody>
+          </table>
+        </div>
+        <pre id="resultBox" class="result-box">Aguardando consulta.</pre>
+      </section>
+
+      <section id="detailSection" class="card is-hidden">
+        <div class="result-head">
+          <h2>Detalhes da Estaca</h2>
+          <span id="detailMeta" class="muted">Nenhuma estaca carregada.</span>
+        </div>
+        <div id="detailHeader" class="detail-grid"></div>
+        <div class="detail-subhead">
+          <h3>Fatias</h3>
+          <span id="detailHint" class="muted">Aguardando selecao.</span>
+        </div>
+        <div class="table-wrap">
+          <table class="results-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Tick</th>
+                <th>Valor 2</th>
+                <th>Valor 3</th>
+              </tr>
+            </thead>
+            <tbody id="detailSlicesBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="dashboardSection" class="card is-hidden">
+        <div class="result-head">
+          <h2>Dashboard Semanal</h2>
+          <span id="dashboardMeta" class="muted">Nenhum dashboard gerado.</span>
+        </div>
+        <p id="dashboardHint" class="result-hint">Selecione uma semana e clique em buscar.</p>
+        <div id="dashboardGrid" class="dashboard-grid"></div>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+  </html>
