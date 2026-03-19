@@ -1,31 +1,38 @@
-# Teste web de estacas no S3
+# Dashboard Operacional Gontijo
 
-Aplicacao minima para testar, via navegador, se as credenciais AWS conseguem listar arquivos de estacas por `cliente`, `IMEI` e `data`.
+Dashboard operacional com:
 
-## O que faz
+- `Acompanhamento Diario`
+- `Acumulado Semanal`
+- `Analises Operacionais`
+- `Admin` com vinculo `IMEI -> maquina -> obra` e metas diaria/semanal
 
-- valida acesso ao bucket com `/api/health`
-- consulta objetos no S3 com `/api/estacas?clientLogin=...&imei=...&date=YYYY-MM-DD`
-- baixa e converte uma estaca com `/api/estacas/detail?key=...`
-- exporta o compilado diario em PDF com `/api/estacas/summary/pdf?...`
-- monta o prefixo no formato `c/<cliente>/h/<imei>/<ano>/<mes>/<dia>/`
-- exibe os arquivos encontrados na interface web
-- mostra detalhes convertidos da estaca usando `sacibin2txt`
+## Stack
 
-## Configuracao
+- Backend: Node + Express
+- Frontend: HTML/CSS/JS em `public/`
+- Persistencia admin:
+  - preferencial: Supabase
+  - fallback local: JSON em desenvolvimento, quando o Supabase nao estiver configurado
 
-1. Copie `.env.example` para `.env`
-2. Preencha:
+## Variaveis de ambiente
 
-```env
-PORT=3000
-AWS_REGION=sa-east-1
-AWS_ACCESS_KEY_ID=...
-AWS_SECRET_ACCESS_KEY=...
-S3_BUCKET=m.geodigitus.com.br
-S3_PREFIX_BASE=c
-S3_CLIENT_LOGIN=cgontijo
-```
+Veja [.env.example](c:/Users/Gontijo/Desktop/extraido/.env.example).
+
+Principais:
+
+- `AWS_REGION`
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+- `S3_BUCKET`
+- `S3_PREFIX_BASE`
+- `S3_CLIENT_LOGIN`
+- `ADMIN_PASSWORD`
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `TV_ROTATION_SECONDS`
+- `TV_SECONDARY_ROTATION_SECONDS`
+- `TV_AUTO_REFRESH_SECONDS`
 
 ## Rodando localmente
 
@@ -34,24 +41,35 @@ npm install
 npm run dev
 ```
 
-Abra `http://localhost:3000`.
+Abra:
 
-## Deploy no Render
+- `http://localhost:3000`
+- `http://localhost:3000/?screen=primary-tv`
+- `http://localhost:3000/?screen=secondary-tv`
 
-Crie um novo `Web Service` apontando para este projeto e configure:
+## Supabase
 
-- Build Command: `npm install`
-- Start Command: `npm start`
+Execute o schema em [supabase/machine_mappings.sql](c:/Users/Gontijo/Desktop/extraido/supabase/machine_mappings.sql).
 
-Variaveis de ambiente no Render:
+O backend usa:
 
-- `AWS_REGION`
-- `AWS_ACCESS_KEY_ID`
-- `AWS_SECRET_ACCESS_KEY`
-- `S3_BUCKET`
-- `S3_PREFIX_BASE`
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
 
-## Observacoes
+Se essas variaveis nao estiverem configuradas, o backend cai no modo local para facilitar validacao.
 
-- O projeto usa `tools/sacibin2txt.exe` no Windows e `tools/sacibin2txt` no Linux.
-- O campo do cliente pode ser informado na tela; se nao for, o backend usa `S3_CLIENT_LOGIN`.
+## Endpoints novos
+
+- `POST /api/admin/session`
+- `POST /api/admin/logout`
+- `GET /api/admin/status`
+- `GET /api/admin/machines`
+- `GET /api/admin/mappings`
+- `POST /api/admin/mappings`
+- `PUT /api/admin/mappings/:id`
+- `POST /api/admin/mappings/:id/activate`
+- `POST /api/admin/mappings/:id/archive`
+- `GET /api/dashboard/daily`
+- `GET /api/dashboard/weekly`
+- `GET /api/dashboard/secondary`
+- `GET /api/display/config`
