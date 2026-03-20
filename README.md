@@ -57,6 +57,20 @@ Abra:
   - configure `window.__APP_CONFIG__.apiBaseUrl` no HTML para apontar para a URL do backend no Vercel
 - O frontend usa `credentials: include`, entao o admin funciona cross-origin desde que `CORS_ORIGIN` esteja configurado corretamente.
 
+## Deploy no Render
+
+- Para este projeto, prefira **Render com Docker** em vez do runtime Node nativo.
+- Motivo: o backend depende do conversor nativo `tools/sacibin2txt`, que eh um binario Linux 32-bit.
+- O repositório agora inclui:
+  - [Dockerfile](c:/Users/Gontijo/Desktop/extraido/Dockerfile)
+  - [.dockerignore](c:/Users/Gontijo/Desktop/extraido/.dockerignore)
+- No Render:
+  - crie um **Web Service**
+  - selecione **Docker**
+  - mantenha o root na raiz do projeto
+  - configure as mesmas variaveis de ambiente do backend
+- O `Dockerfile` instala as bibliotecas 32-bit necessarias para o `sacibin2txt`.
+
 ## Supabase
 
 Execute o schema em [supabase/machine_mappings.sql](c:/Users/Gontijo/Desktop/extraido/supabase/machine_mappings.sql).
