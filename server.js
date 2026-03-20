@@ -60,6 +60,8 @@ function missingEnvVars() {
 function buildS3Client() {
   return new S3Client({
     region: process.env.AWS_REGION || "sa-east-1",
+    // Buckets com pontos no nome podem falhar com TLS em virtual-hosted style.
+    forcePathStyle: true,
     credentials: {
       accessKeyId: process.env.AWS_ACCESS_KEY_ID,
       secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
