@@ -1,6 +1,7 @@
 import { api } from './api.js';
 import { getState } from './state.js';
 import { renderBuildingCard, renderComparisonList } from './charts.js';
+import { formatMetric, getMetricConfig } from './metrics.js';
 
 let machineSpotlightTimer = null;
 
@@ -27,6 +28,7 @@ function machineSpotlightTone(machine) {
 
 function renderMachineSpotlight(container, machines) {
   clearMachineSpotlightTimer();
+  const metric = getMetricConfig();
 
   if (!machines.length) {
     container.innerHTML = '<article class="hero-card"><p class="inline-feedback">Nenhuma maquina disponivel para destaque.</p></article>';
@@ -47,6 +49,28 @@ function renderMachineSpotlight(container, machines) {
         : machine.work_source === 'api'
         ? 'Operacao'
         : 'Sem obra';
+    const metricBlock = metric.isCountMetric
+      ? `
+          <article class="machine-spotlight__metric">
+            <span>Faltam</span>
+            <strong>${remaining}</strong>
+          </article>
+          <article class="machine-spotlight__metric">
+            <span>Fonte</span>
+            <strong>${workSourceLabel}</strong>
+          </article>
+        `
+      : `
+          <article class="machine-spotlight__metric">
+            <span>${metric.shortLabel}</span>
+            <strong>${formatMetric(machine[metric.machineKey] || 0, metric)}</strong>
+          </article>
+          <article class="machine-spotlight__metric">
+            <span>Faltam</span>
+            <strong>${remaining}</strong>
+          </article>
+        `;
+    const footerLabel = metric.isCountMetric ? 'Rotacao automatica a cada 10 segundos' : workSourceLabel;
 
     container.innerHTML = `
       <article class="hero-card machine-spotlight machine-spotlight--${tone}">
@@ -82,17 +106,10 @@ function renderMachineSpotlight(container, machines) {
             <span>Meta dia</span>
             <strong>${machine.daily_goal_estacas}</strong>
           </article>
-          <article class="machine-spotlight__metric">
-            <span>Faltam</span>
-            <strong>${remaining}</strong>
-          </article>
-          <article class="machine-spotlight__metric">
-            <span>Fonte</span>
-            <strong>${workSourceLabel}</strong>
-          </article>
+          ${metricBlock}
         </div>
         <div class="machine-spotlight__footer">
-          <span>Rotacao automatica a cada 10 segundos</span>
+          <span>${footerLabel}</span>
           <span>${machine.obra_code ? `Obra ${machine.obra_code}` : 'Codigo da obra indisponivel'}</span>
         </div>
       </article>
@@ -107,6 +124,7 @@ function renderMachineSpotlight(container, machines) {
 }
 
 function machineCard(machine) {
+  const metric = getMetricConfig();
   const percent = machine.progress_percent == null ? 0 : Math.min(machine.progress_percent, 100);
   const sourceLabel =
     machine.work_source === 'admin'
@@ -130,7 +148,7 @@ function machineCard(machine) {
       <div class="machine-progress"><span style="width:${percent}%"></span></div>
       <div class="machine-stats">
         <div><span>Estacas</span><strong>${machine.realized_estacas}</strong></div>
-        <div><span>Meta dia</span><strong>${machine.daily_goal_estacas}</strong></div>
+        <div><span>${metric.isCountMetric ? 'Meta dia' : metric.shortLabel}</span><strong>${metric.isCountMetric ? machine.daily_goal_estacas : formatMetric(machine[metric.machineKey] || 0, metric)}</strong></div>
         <div><span>Numero obra</span><strong>${machine.obra_code || '-'}</strong></div>
       </div>
     </article>
@@ -138,12 +156,14 @@ function machineCard(machine) {
 }
 
 function timelineCard(item) {
+  const metric = getMetricConfig();
+  const metricText = metric.isCountMetric ? '' : ` | ${formatMetric(item[metric.machineKey] || 0, metric)}`;
   return `
     <article class="timeline-card">
       <div class="timeline-time">${item.date} ${item.finishedAt || '--:--'}</div>
       <div>
         <strong>${item.machine_name}</strong>
-        <p>${item.estaca || 'Sem estaca'} | ${item.obra_name || 'Sem obra'}</p>
+        <p>${item.estaca || 'Sem estaca'} | ${item.obra_name || 'Sem obra'}${metricText}</p>
       </div>
     </article>
   `;
@@ -172,6 +192,7 @@ function renderDailyOperationalPanels(data) {
 
 export async function renderDailyView() {
   const state = getState();
+  const metric = getMetricConfig();
   const data = await api.getDaily({
     clientLogin: state.clientLogin,
     date: state.date,
@@ -204,17 +225,29 @@ export async function renderDailyView() {
     percent: data.total_progress_percent,
     description: 'Painel principal para acompanhar o total executado no dia frente a meta diaria consolidada.',
     accent: true,
+    metrics: metric.isCountMetric
+      ? undefined
+      : [
+          { label: 'Realizado', value: data.total_realized_estacas },
+          { label: 'Meta', value: data.total_goal_estacas },
+          { label: metric.shortLabel, value: formatMetric(data[metric.totalKey] || 0, metric) },
+        ],
   });
 
   renderMachineSpotlight(document.getElementById('dailyBuildingGoal'), data.machines);
   renderComparisonList(
     document.getElementById('dailyWorksComparison'),
-    data.top_works.slice(0, 5).map((work) => ({
+    [...data.top_works]
+      .sort((a, b) => (b[metric.machineKey] || 0) - (a[metric.machineKey] || 0))
+      .slice(0, 5)
+      .map((work) => ({
       label: work.obra_name,
       subLabel: `${work.goal_estacas || 0} de meta no dia`,
-      value: work.realized_estacas,
-      sideValue: `${work.realized_estacas} estacas`,
-    })),
+      value: work[metric.machineKey] || 0,
+      sideValue: metric.isCountMetric
+        ? `${work.realized_estacas} estacas`
+        : `${work.realized_estacas} estacas | ${formatMetric(work[metric.machineKey] || 0, metric)}`,
+      })),
     {
       kicker: 'Obra',
       emptyText: 'Nenhuma obra em destaque.',

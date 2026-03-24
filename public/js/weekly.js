@@ -1,6 +1,7 @@
 import { api } from './api.js';
 import { getFriendlyWeekRange, getState, getWeekStartFromInput } from './state.js';
 import { renderBuildingCard, renderComparisonList, renderMultiLineChart } from './charts.js';
+import { formatMetric, getMetricConfig } from './metrics.js';
 
 function toneClass(machine) {
   if (machine.progress_percent == null) return 'neutral';
@@ -10,6 +11,7 @@ function toneClass(machine) {
 }
 
 function machineCard(machine) {
+  const metric = getMetricConfig();
   const percent = machine.progress_percent == null ? 0 : Math.min(machine.progress_percent, 100);
   const sourceLabel =
     machine.work_source === 'admin'
@@ -34,7 +36,7 @@ function machineCard(machine) {
       <div class="machine-stats">
         <div><span>Semana</span><strong>${machine.realized_estacas}</strong></div>
         <div><span>Meta</span><strong>${machine.weekly_goal_estacas}</strong></div>
-        <div><span>Media/dia</span><strong>${(machine.realized_estacas / 7).toFixed(1)}</strong></div>
+        <div><span>${metric.isCountMetric ? 'Media/dia' : metric.shortLabel}</span><strong>${metric.isCountMetric ? (machine.realized_estacas / 7).toFixed(1) : formatMetric(machine[metric.machineKey] || 0, metric)}</strong></div>
       </div>
     </article>
   `;
@@ -42,6 +44,7 @@ function machineCard(machine) {
 
 export async function renderWeeklyView() {
   const state = getState();
+  const metric = getMetricConfig();
   const weekStart = getWeekStartFromInput(state.weekInput);
   const data = await api.getWeekly({
     clientLogin: state.clientLogin,
@@ -93,6 +96,13 @@ export async function renderWeeklyView() {
     percent: data.total_progress_percent,
     description: 'Consolidado semanal do volume executado pelas maquinas ativas.',
     accent: true,
+    metrics: metric.isCountMetric
+      ? undefined
+      : [
+          { label: 'Realizado', value: data.total_realized_estacas },
+          { label: 'Meta', value: data.total_goal_estacas },
+          { label: metric.shortLabel, value: formatMetric(data[metric.totalKey] || 0, metric) },
+        ],
   });
 
   renderBuildingCard(document.getElementById('weeklyBuildingGoal'), {
@@ -107,9 +117,18 @@ export async function renderWeeklyView() {
     fillClass: 'building-fill--goal',
     description: 'Alvo consolidado em estacas para a semana das maquinas ativas cadastradas.',
     metrics: [
-      { label: 'Meta da semana', value: data.total_goal_estacas },
-      { label: 'Realizado', value: data.total_realized_estacas },
-      { label: 'Faltam', value: Math.max(data.total_goal_estacas - data.total_realized_estacas, 0) },
+      ...(metric.isCountMetric
+        ? [
+            { label: 'Meta da semana', value: data.total_goal_estacas },
+            { label: 'Realizado', value: data.total_realized_estacas },
+            { label: 'Faltam', value: Math.max(data.total_goal_estacas - data.total_realized_estacas, 0) },
+          ]
+        : [
+            { label: 'Meta da semana', value: data.total_goal_estacas },
+            { label: 'Realizado', value: data.total_realized_estacas },
+            { label: 'Faltam', value: Math.max(data.total_goal_estacas - data.total_realized_estacas, 0) },
+            { label: metric.shortLabel, value: formatMetric(data[metric.totalKey] || 0, metric) },
+          ]),
     ],
   });
 
@@ -143,12 +162,17 @@ export async function renderWeeklyView() {
 
   renderComparisonList(
     document.getElementById('weeklyRanking'),
-    data.ranking.slice(0, 6).map((machine) => ({
+    [...data.machines]
+      .sort((a, b) => (b[metric.machineKey] || 0) - (a[metric.machineKey] || 0))
+      .slice(0, 6)
+      .map((machine) => ({
       label: machine.machine_name,
       subLabel: machine.obra_name || 'Sem obra',
-      value: machine.realized_estacas,
-      sideValue: machine.progress_percent == null ? 'Sem meta' : `${machine.progress_percent.toFixed(0)}%`,
-    })),
+      value: machine[metric.machineKey] || 0,
+      sideValue: metric.isCountMetric
+        ? (machine.progress_percent == null ? 'Sem meta' : `${machine.progress_percent.toFixed(0)}%`)
+        : `${machine.realized_estacas} estacas | ${formatMetric(machine[metric.machineKey] || 0, metric)}`,
+      })),
     {
       kicker: 'Maquina',
       emptyText: 'Nenhum ranking disponivel.',

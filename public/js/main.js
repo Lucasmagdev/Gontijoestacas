@@ -10,6 +10,8 @@ function syncControls() {
   document.getElementById('clientLoginInput').value = state.clientLogin;
   document.getElementById('dateInput').value = state.date;
   document.getElementById('weekInput').value = state.weekInput;
+  document.getElementById('metricEstacasButton').classList.toggle('is-active', state.metricMode !== 'meq');
+  document.getElementById('metricMeqButton').classList.toggle('is-active', state.metricMode === 'meq');
 }
 
 function setActiveView(view) {
@@ -91,6 +93,18 @@ async function boot() {
 
   document.getElementById('weekInput').addEventListener('change', (event) => {
     setState({ weekInput: event.target.value });
+  });
+
+  document.getElementById('metricEstacasButton').addEventListener('click', async () => {
+    setState({ metricMode: 'estacas' });
+    syncControls();
+    await refreshActiveView();
+  });
+
+  document.getElementById('metricMeqButton').addEventListener('click', async () => {
+    setState({ metricMode: 'meq' });
+    syncControls();
+    await refreshActiveView();
   });
 
   document.getElementById('refreshButton').addEventListener('click', refreshActiveView);

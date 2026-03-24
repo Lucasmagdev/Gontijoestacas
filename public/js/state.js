@@ -40,6 +40,7 @@ const state = {
   clientLogin: stored.clientLogin || 'cgontijo',
   date: initialDate,
   weekInput: initialWeekInput,
+  metricMode: stored.metricMode === 'meq' ? 'meq' : 'estacas',
   screen: new URLSearchParams(window.location.search).get('screen') || '',
 };
 
@@ -50,6 +51,7 @@ function persist() {
       clientLogin: state.clientLogin,
       date: state.date,
       weekInput: state.weekInput,
+      metricMode: state.metricMode,
     })
   );
 }

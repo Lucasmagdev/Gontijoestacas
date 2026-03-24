@@ -6,6 +6,7 @@ Dashboard operacional com:
 - `Acumulado Semanal`
 - `Analises Operacionais`
 - `Admin` com vinculo `IMEI -> maquina -> obra` e metas diaria/semanal
+- `Admin` com importacao de metas semanais por foto via Gemini, revisao e confirmacao manual
 
 ## Stack
 
@@ -30,6 +31,8 @@ Principais:
 - `ADMIN_PASSWORD`
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
+- `GEMINI_API_KEY`
+- `GEMINI_MODEL`
 - `CORS_ORIGIN`
 - `TV_ROTATION_SECONDS`
 - `TV_SECONDARY_ROTATION_SECONDS`
@@ -75,6 +78,10 @@ Abra:
 
 Execute o schema em [supabase/machine_mappings.sql](c:/Users/Gontijo/Desktop/extraido/supabase/machine_mappings.sql).
 
+Para metas importadas por foto, execute tambem:
+
+- [supabase/daily_goal_targets.sql](c:/Users/Gontijo/Desktop/extraido/supabase/daily_goal_targets.sql)
+
 O backend usa:
 
 - `SUPABASE_URL`
@@ -93,6 +100,9 @@ Se essas variaveis nao estiverem configuradas, o backend cai no modo local para 
 - `PUT /api/admin/mappings/:id`
 - `POST /api/admin/mappings/:id/activate`
 - `POST /api/admin/mappings/:id/archive`
+- `GET /api/admin/goal-targets`
+- `POST /api/admin/goal-imports/parse`
+- `POST /api/admin/goal-imports/confirm`
 - `GET /api/dashboard/daily`
 - `GET /api/dashboard/weekly`
 - `GET /api/dashboard/secondary`

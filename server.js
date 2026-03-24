@@ -6,6 +6,9 @@ const { spawn } = require("child_process");
 const dotenv = require("dotenv");
 const PDFDocument = require("pdfkit");
 const adminStore = require("./lib/admin-store");
+const goalTargetStore = require("./lib/goal-target-store");
+const { parseGoalImportImage, normalizeGoalRows } = require("./lib/goal-import-service");
+const { parseDiameterCm, getMeqFactor } = require("./lib/meq");
 const {
   buildDailyDashboard,
   buildWeeklyDashboard,
@@ -43,7 +46,7 @@ app.use((req, res, next) => {
   return next();
 });
 
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "15mb" }));
 
 const adminSessions = new Map();
 
@@ -554,9 +557,13 @@ function toOperationalSummary(item, detail) {
   const header = detail.parsed.header || {};
   const phases = detail.parsed.phases || {};
   const slices = detail.parsed.slices || [];
-  const diameterMm = Number(String(header.diametro || "").replace(",", ".").trim());
-  const diameterCm = Number.isFinite(diameterMm) ? diameterMm / 10 : null;
-  const realizadoM = Number.isFinite(phases.depthCm) ? phases.depthCm / 100 : null;
+  const diameterCm = parseDiameterCm(header.diametro);
+  const realizadoLinearM = Number.isFinite(phases.depthCm) ? phases.depthCm / 100 : null;
+  const meqFactor = getMeqFactor(diameterCm);
+  const realizadoMeq =
+    Number.isFinite(realizadoLinearM) && Number.isFinite(meqFactor)
+      ? Number((realizadoLinearM * meqFactor).toFixed(2))
+      : null;
   const line8 = parseLine8Metadata(header.linha8);
   const inclination = parseInclination(header.inclinacao);
   const drillingDurationMin = minutesBetween(header.inicioPerfuracao, header.fimPerfuracao);
@@ -591,7 +598,10 @@ function toOperationalSummary(item, detail) {
     obra: (header.obra || item.obra || "").trim(),
     estaca: (header.numero || item.estaca || "").trim(),
     diametroCm: diameterCm,
-    realizadoM: realizadoM,
+    realizadoM: realizadoLinearM,
+    realizadoLinearM,
+    realizadoMeq,
+    meqFactor,
     profundidadeCm: phases.depthCm ?? 0,
     drillingSlices: phases.drillingSlices ?? 0,
     concretingSlices: phases.concretingSlices ?? 0,
@@ -1319,6 +1329,96 @@ app.post("/api/admin/mappings/:id/archive", requireAdmin, async (req, res) => {
     return res.status(400).json({
       ok: false,
       message: "Falha ao encerrar vinculo admin.",
+      details: error.message,
+    });
+  }
+});
+
+app.get("/api/admin/goal-targets", requireAdmin, async (req, res) => {
+  try {
+    const includeArchived = String(req.query.includeArchived || "false") === "true";
+    const limit = Number(req.query.limit || 100);
+    return res.json({
+      ok: true,
+      items: await goalTargetStore.listGoals({ includeArchived, limit }),
+      mode: goalTargetStore.getMode(),
+    });
+  } catch (error) {
+    return res.status(500).json({
+      ok: false,
+      message: "Falha ao listar metas importadas.",
+      details: error.message,
+    });
+  }
+});
+
+app.post("/api/admin/goal-imports/parse", requireAdmin, async (req, res) => {
+  try {
+    const imageDataUrl = String(req.body?.imageDataUrl || "");
+    const fileName = String(req.body?.fileName || "");
+
+    if (!imageDataUrl) {
+      return res.status(400).json({
+        ok: false,
+        message: "Imagem obrigatoria para importar metas.",
+      });
+    }
+
+    const machines = await adminStore.listMachines();
+    const parsed = await parseGoalImportImage({
+      imageDataUrl,
+      fileName,
+      machines,
+    });
+
+    return res.json({
+      ok: true,
+      item: parsed,
+    });
+  } catch (error) {
+    return res.status(400).json({
+      ok: false,
+      message: "Falha ao ler a imagem de metas.",
+      details: error.message,
+    });
+  }
+});
+
+app.post("/api/admin/goal-imports/confirm", requireAdmin, async (req, res) => {
+  try {
+    const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+    const sourceImageId = String(req.body?.importId || "");
+    const sourceFileName = String(req.body?.fileName || "");
+
+    if (!rows.length) {
+      return res.status(400).json({
+        ok: false,
+        message: "Nenhuma linha enviada para confirmacao.",
+      });
+    }
+
+    const machines = await adminStore.listMachines();
+    const normalizedRows = normalizeGoalRows(rows, machines, {
+      sourceImageId,
+      sourceFileName,
+    });
+    const validRows = normalizedRows.filter((item) => !item.errors.length);
+    const rejectedRows = normalizedRows.filter((item) => item.errors.length);
+    const saved = await goalTargetStore.saveConfirmedGoals(validRows, {
+      confirmedBy: "admin",
+    });
+
+    return res.json({
+      ok: true,
+      savedCount: saved.length,
+      rejectedCount: rejectedRows.length,
+      items: saved,
+      rejectedRows,
+    });
+  } catch (error) {
+    return res.status(400).json({
+      ok: false,
+      message: "Falha ao confirmar metas importadas.",
       details: error.message,
     });
   }

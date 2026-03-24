@@ -1,6 +1,7 @@
 import { api } from './api.js';
 import { getState, getWeekStartFromInput } from './state.js';
 import { renderComparisonList, renderHeatmap, renderMultiLineChart } from './charts.js';
+import { formatMetric, getMetricConfig } from './metrics.js';
 
 let secondaryTvTimelineTimer = null;
 
@@ -14,12 +15,14 @@ function alertCard(item) {
 }
 
 function timelineCard(item) {
+  const metric = getMetricConfig();
+  const metricText = metric.isCountMetric ? '' : ` | ${formatMetric(item[metric.machineKey] || 0, metric)}`;
   return `
     <article class="timeline-card">
       <div class="timeline-time">${item.date} ${item.finishedAt || '--:--'}</div>
       <div>
         <strong>${item.machine_name}</strong>
-        <p>${item.estaca || 'Sem estaca'} | ${item.obra_name || 'Sem obra'}</p>
+        <p>${item.estaca || 'Sem estaca'} | ${item.obra_name || 'Sem obra'}${metricText}</p>
       </div>
     </article>
   `;
@@ -33,6 +36,7 @@ function toneClass(machine) {
 }
 
 function machineDayCard(machine) {
+  const metric = getMetricConfig();
   const percent = machine.progress_percent == null ? 0 : Math.min(machine.progress_percent, 100);
   const sourceLabel =
     machine.work_source === 'admin'
@@ -57,7 +61,7 @@ function machineDayCard(machine) {
       <div class="machine-progress"><span style="width:${percent}%"></span></div>
       <div class="machine-stats">
         <div><span>Estacas</span><strong>${machine.realized_estacas}</strong></div>
-        <div><span>Meta dia</span><strong>${machine.daily_goal_estacas}</strong></div>
+        <div><span>${metric.isCountMetric ? 'Meta dia' : metric.shortLabel}</span><strong>${metric.isCountMetric ? machine.daily_goal_estacas : formatMetric(machine[metric.machineKey] || 0, metric)}</strong></div>
         <div><span>Numero obra</span><strong>${machine.obra_code || '-'}</strong></div>
       </div>
     </article>
@@ -135,6 +139,7 @@ async function renderSecondaryTvDailyOps(state) {
 
 export async function renderSecondaryView() {
   const state = getState();
+  const metric = getMetricConfig();
 
   if (state.screen === 'secondary-tv') {
     return renderSecondaryTvDailyOps(state);
@@ -146,15 +151,22 @@ export async function renderSecondaryView() {
     weekStart: getWeekStartFromInput(state.weekInput),
   });
 
-  document.getElementById('secondaryMeta').textContent = `${data.item.today_total_estacas} hoje / ${data.item.week_total_estacas} semana`;
+  document.getElementById('secondaryMeta').textContent = metric.isCountMetric
+    ? `${data.item.today_total_estacas} hoje / ${data.item.week_total_estacas} semana`
+    : `${data.item.today_total_estacas} hoje / ${data.item.week_total_estacas} semana | ${formatMetric(data.item.week_total_meq || 0, metric)}`;
   renderComparisonList(
     document.getElementById('secondaryMachines'),
-    data.item.top_machines.slice(0, 6).map((item) => ({
+    [...data.item.top_machines]
+      .sort((a, b) => (b[metric.machineKey] || 0) - (a[metric.machineKey] || 0))
+      .slice(0, 6)
+      .map((item) => ({
       label: item.machine_name,
       subLabel: item.obra_name || 'Sem obra',
-      value: item.realized_estacas,
-      sideValue: `${item.realized_estacas} estacas`,
-    })),
+      value: item[metric.machineKey] || 0,
+      sideValue: metric.isCountMetric
+        ? `${item.realized_estacas} estacas`
+        : `${item.realized_estacas} estacas | ${formatMetric(item[metric.machineKey] || 0, metric)}`,
+      })),
     {
       kicker: 'Maquina',
       emptyText: 'Nenhuma maquina no ranking.',
@@ -162,12 +174,17 @@ export async function renderSecondaryView() {
   );
   renderComparisonList(
     document.getElementById('secondaryWorks'),
-    data.item.top_works.slice(0, 6).map((item) => ({
+    [...data.item.top_works]
+      .sort((a, b) => (b[metric.machineKey] || 0) - (a[metric.machineKey] || 0))
+      .slice(0, 6)
+      .map((item) => ({
       label: item.obra_name,
       subLabel: `${item.machines} maquinas`,
-      value: item.realized_estacas,
-      sideValue: `${item.goal_estacas || 0} meta`,
-    })),
+      value: item[metric.machineKey] || 0,
+      sideValue: metric.isCountMetric
+        ? `${item.realized_estacas} estacas | ${item.goal_estacas || 0} meta`
+        : `${item.realized_estacas} estacas | ${formatMetric(item[metric.machineKey] || 0, metric)}`,
+      })),
     {
       kicker: 'Obra',
       emptyText: 'Nenhuma obra consolidada.',
@@ -185,8 +202,8 @@ export async function renderSecondaryView() {
     data.item.daily_realized_by_day.map((item) => item.date.slice(5)),
     [
       {
-        label: 'Realizado',
-        data: data.item.daily_realized_by_day.map((item) => item.realized_estacas),
+        label: metric.isCountMetric ? 'Realizado' : metric.longLabel,
+        data: data.item.daily_realized_by_day.map((item) => item[metric.dayKey] || 0),
         borderColor: '#d81f26',
         backgroundColor: 'rgba(216, 31, 38, 0.14)',
         fill: true,
@@ -197,13 +214,14 @@ export async function renderSecondaryView() {
         pointBorderWidth: 2,
       },
       {
-        label: 'Meta diaria',
-        data: data.item.daily_realized_by_day.map((item) => item.goal_estacas),
+        label: metric.isCountMetric ? 'Meta diaria' : 'Estacas',
+        data: data.item.daily_realized_by_day.map((item) => (metric.isCountMetric ? item.goal_estacas : item.realized_estacas)),
         borderColor: '#8a4f4f',
         borderDash: [10, 8],
         fill: false,
         tension: 0,
-        pointRadius: 0,
+        pointRadius: 3,
+        pointBackgroundColor: '#fff',
       },
     ]
   );

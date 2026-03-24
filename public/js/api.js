@@ -89,4 +89,19 @@ export const api = {
       body: JSON.stringify({}),
     });
   },
+  parseGoalImage(payload) {
+    return request('/api/admin/goal-imports/parse', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+  confirmGoalImport(payload) {
+    return request('/api/admin/goal-imports/confirm', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+  getGoalTargets(limit = 100) {
+    return request(`/api/admin/goal-targets?${new URLSearchParams({ limit: String(limit) }).toString()}`);
+  },
 };

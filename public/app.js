@@ -923,6 +923,13 @@ function currentSearchParams() {
   };
 }
 
+function currentMachineName() {
+  const machines = loadMachines();
+  const currentImei = imeiInput.value.trim();
+  const match = machines.find((item) => item.imei === currentImei);
+  return match?.name || machineSelect.options[machineSelect.selectedIndex]?.text?.split("|")[0]?.trim() || currentImei;
+}
+
 const initialMachines = loadMachines();
 refreshMachinesUi(initialMachines, false);
 syncSelectedMachineFromImei(initialMachines);
@@ -1018,12 +1025,13 @@ resultsTableBody.addEventListener("click", (event) => {
 
 pdfButton.addEventListener("click", async () => {
   const { clientLogin, imei, date } = currentSearchParams();
+  const machineName = currentMachineName();
   const originalText = pdfButton.textContent;
   pdfButton.disabled = true;
   pdfButton.textContent = "Gerando PDF...";
 
   try {
-    const query = new URLSearchParams({ clientLogin, imei, date });
+    const query = new URLSearchParams({ clientLogin, imei, date, machineName });
     const response = await fetch(`/api/estacas/summary/pdf?${query.toString()}`);
 
     if (!response.ok) {
