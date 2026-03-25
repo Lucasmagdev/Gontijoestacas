@@ -90,11 +90,14 @@ export async function renderWeeklyView() {
 
   renderBuildingCard(document.getElementById('weeklyBuildingMain'), {
     eyebrow: 'Principal',
-    title: 'Estacas acumuladas na semana',
+    title: metric.isCountMetric ? 'Estacas acumuladas na semana' : 'MEQ acumulado na semana',
+    primaryValue: metric.isCountMetric ? data.total_realized_estacas : data[metric.totalKey] || 0,
     realized: data.total_realized_estacas,
     goal: data.total_goal_estacas,
     percent: data.total_progress_percent,
-    description: 'Consolidado semanal do volume executado pelas maquinas ativas.',
+    description: metric.isCountMetric
+      ? 'Consolidado semanal do volume executado pelas maquinas ativas.'
+      : 'Consolidado semanal do volume equivalente realizado pelas maquinas ativas.',
     accent: true,
     metrics: metric.isCountMetric
       ? undefined
@@ -137,8 +140,8 @@ export async function renderWeeklyView() {
     data.accumulated_by_day.map((item) => item.date.slice(5)),
     [
       {
-        label: 'Realizado acumulado',
-        data: data.accumulated_by_day.map((item) => item.accumulated_estacas),
+        label: metric.isCountMetric ? 'Realizado acumulado' : metric.longLabel,
+        data: data.accumulated_by_day.map((item) => item[metric.accumulatedKey] || 0),
         borderColor: '#d81f26',
         backgroundColor: 'rgba(216, 31, 38, 0.14)',
         fill: true,
@@ -149,7 +152,7 @@ export async function renderWeeklyView() {
         pointBorderWidth: 2,
       },
       {
-        label: 'Esperado acumulado',
+        label: metric.isCountMetric ? 'Esperado acumulado' : 'Estacas acumuladas',
         data: data.accumulated_by_day.map((item) => item.expected_accumulated_estacas),
         borderColor: '#8a4f4f',
         borderDash: [10, 8],

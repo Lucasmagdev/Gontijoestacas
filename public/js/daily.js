@@ -87,8 +87,8 @@ function renderMachineSpotlight(container, machines) {
         </div>
         <div class="machine-spotlight__hero">
           <div class="machine-spotlight__score">
-            <span class="machine-spotlight__label">Realizado hoje</span>
-            <strong>${machine.realized_estacas}</strong>
+            <span class="machine-spotlight__label">${metric.isCountMetric ? 'Realizado hoje' : 'MEQ hoje'}</span>
+            <strong>${metric.isCountMetric ? machine.realized_estacas : formatMetric(machine[metric.machineKey] || 0, metric)}</strong>
             <p>IMEI ${machine.imei}</p>
           </div>
           <div class="machine-spotlight__progress">
@@ -219,11 +219,14 @@ export async function renderDailyView() {
 
   renderBuildingCard(document.getElementById('dailyBuildingMain'), {
     eyebrow: 'Principal',
-    title: 'Estacas realizadas no dia',
+    title: metric.isCountMetric ? 'Estacas realizadas no dia' : 'MEQ realizado no dia',
+    primaryValue: metric.isCountMetric ? data.total_realized_estacas : data[metric.totalKey] || 0,
     realized: data.total_realized_estacas,
     goal: data.total_goal_estacas,
     percent: data.total_progress_percent,
-    description: 'Painel principal para acompanhar o total executado no dia frente a meta diaria consolidada.',
+    description: metric.isCountMetric
+      ? 'Painel principal para acompanhar o total executado no dia frente a meta diaria consolidada.'
+      : 'Painel principal para acompanhar o volume equivalente realizado no dia, com meta em estacas como referencia.',
     accent: true,
     metrics: metric.isCountMetric
       ? undefined

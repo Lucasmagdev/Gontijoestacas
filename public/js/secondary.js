@@ -88,6 +88,7 @@ function bindAutoScrollTimeline(container) {
 }
 
 async function renderSecondaryTvDailyOps(state) {
+  const metric = getMetricConfig();
   const data = await api.getDaily({
     clientLogin: state.clientLogin,
     date: state.date,
@@ -104,7 +105,7 @@ async function renderSecondaryTvDailyOps(state) {
       </div>
       <div class="meta-copy">
         <strong>${new Date(`${data.date}T00:00:00`).toLocaleDateString('pt-BR')}</strong>
-        <span>${activeMachines.length} maquinas ativas</span>
+        <span>${activeMachines.length} maquinas ativas | ${formatMetric(data[metric.totalKey] || 0, metric)}</span>
       </div>
     </div>
 

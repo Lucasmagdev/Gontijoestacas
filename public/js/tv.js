@@ -2,6 +2,7 @@ import { api } from './api.js';
 import { renderDailyView } from './daily.js';
 import { renderWeeklyView } from './weekly.js';
 import { renderSecondaryView } from './secondary.js';
+import { setState } from './state.js';
 
 function showOnly(viewId) {
   document.querySelectorAll('.view-section').forEach((section) => {
@@ -12,6 +13,7 @@ function showOnly(viewId) {
 export async function initTvMode(screen) {
   document.body.classList.add('tv-mode');
   document.body.dataset.screen = screen;
+  setState({ metricMode: 'meq' });
   document.getElementById('mainNav').classList.add('is-hidden');
   document.getElementById('controlPanel').classList.add('is-hidden');
   document.getElementById('refreshButton').classList.add('is-hidden');
