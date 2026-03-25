@@ -75,14 +75,14 @@
 
           <div id="dailyHero" class="hero-grid"></div>
           <div class="panel-grid two-col daily-desktop-panels">
-            <section class="panel">
+            <section class="panel is-hidden">
               <div class="panel-head">
                 <h3>Maquinas do dia</h3>
                 <span id="dailyMachinesCount">0 maquinas</span>
               </div>
               <div id="dailyMachineCards" class="machine-card-grid"></div>
             </section>
-            <section class="panel">
+            <section class="panel is-hidden">
               <div class="panel-head">
                 <h3>Timeline do dia</h3>
                 <span>Ultimas estacas registradas</span>
@@ -303,8 +303,22 @@
 
             <section class="panel">
               <div class="panel-head">
-                <h3>Importar metas por foto</h3>
-                <span>Tesseract OCR le, admin confere e salva</span>
+                <h3>Importar metas por Excel</h3>
+                <span>Excel e o fluxo principal. OCR fica como fallback.</span>
+              </div>
+              <form id="goalImportExcelForm" class="mapping-form">
+                <label>
+                  Arquivo Acompanhamento (.xlsx ou .csv)
+                  <input id="goalImportExcelFileInput" type="file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" />
+                </label>
+                <p class="inline-feedback">Cabecalho obrigatorio: Data | Equipamento | N&ordm; Obra | Meta qtd estacas | &Oslash;1 | Profundidade | Valor &Oslash;1 | Meta qtd estacas | &Oslash;2 | Profundidade | Valor (R$).</p>
+                <div class="form-actions">
+                  <button id="goalImportExcelParseButton" class="button button-primary" type="submit">Ler Excel</button>
+                </div>
+              </form>
+              <div class="panel-head panel-head--compact">
+                <h3>Fallback por OCR</h3>
+                <span>Use apenas quando a planilha nao estiver disponivel.</span>
               </div>
               <form id="goalImportForm" class="mapping-form">
                 <label>
@@ -312,11 +326,11 @@
                   <input id="goalImportFileInput" type="file" accept="image/*" />
                 </label>
                 <div class="form-actions">
-                  <button id="goalImportParseButton" class="button button-primary" type="submit">Ler imagem</button>
+                  <button id="goalImportParseButton" class="button button-ghost" type="submit">Ler imagem</button>
                   <button id="goalImportResetButton" class="button button-ghost" type="button">Limpar importacao</button>
                 </div>
               </form>
-              <p id="goalImportFeedback" class="inline-feedback">Envie um print/foto da planilha. O sistema vai extrair as linhas para revisao antes de salvar.</p>
+              <p id="goalImportFeedback" class="inline-feedback">Envie a planilha Acompanhamento na aba Banco de Dados. Se necessario, use OCR como fallback.</p>
               <div id="goalImportReview" class="goal-import-review is-hidden">
                 <div class="panel-head panel-head--compact">
                   <h3>Revisao do lote</h3>
@@ -333,7 +347,7 @@
                         <th>Meta total estacas</th>
                         <th>Meta total MEQ</th>
                         <th>Faixas</th>
-                        <th>Texto OCR</th>
+                        <th>Texto origem</th>
                         <th>Alertas</th>
                         <th>Acoes</th>
                       </tr>
@@ -405,3 +419,4 @@
     <script type="module" src="/js/main.js"></script>
   </body>
 </html>
+

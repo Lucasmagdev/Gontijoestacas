@@ -44,6 +44,40 @@ async function request(path, options = {}) {
   return data;
 }
 
+async function requestForm(path, formData, options = {}) {
+  const response = await fetch(buildApiUrl(path), {
+    credentials: 'include',
+    method: 'POST',
+    body: formData,
+    ...options,
+  });
+
+  const text = await response.text();
+  const contentType = response.headers.get('content-type') || '';
+  const isJson = contentType.includes('application/json');
+  let data = null;
+
+  if (text && isJson) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error(`Resposta JSON invalida em ${buildApiUrl(path)}.`);
+    }
+  }
+
+  if (text && !isJson) {
+    const compactText = text.replace(/\s+/g, ' ').trim();
+    const preview = compactText.slice(0, 120);
+    throw new Error(`Resposta inesperada em ${buildApiUrl(path)}: HTTP ${response.status}${preview ? ` | ${preview}` : ''}`);
+  }
+
+  if (!response.ok) {
+    throw new Error(data?.details || data?.message || `Erro HTTP ${response.status}`);
+  }
+
+  return data;
+}
+
 export const api = {
   getHealth() {
     return request('/api/health');
@@ -105,25 +139,18 @@ export const api = {
       body: JSON.stringify({}),
     });
   },
-  parseGoalImage(payload) {
-    return request('/api/admin/goal-imports/parse', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-  },
-  parseGoalTextRow(payload) {
-    return request('/api/admin/goal-imports/parse-row', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-  },
-  confirmGoalImport(payload) {
-    return request('/api/admin/goal-imports/confirm', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-  },
   getGoalTargets(limit = 100) {
     return request(`/api/admin/goal-targets?${new URLSearchParams({ limit: String(limit) }).toString()}`);
+  },
+  parseGoalImport(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    return requestForm('/api/admin/goal-imports/parse', formData);
+  },
+  confirmGoalImport(items) {
+    return request('/api/admin/goal-imports/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ items }),
+    });
   },
 };

@@ -5,10 +5,11 @@ const crypto = require("crypto");
 const { spawn } = require("child_process");
 const dotenv = require("dotenv");
 const PDFDocument = require("pdfkit");
+const multer = require("multer");
+const XLSX = require("xlsx");
 const adminStore = require("./lib/admin-store");
 const goalTargetStore = require("./lib/goal-target-store");
-const { parseGoalImportImage, parseGoalImportText, normalizeGoalRows } = require("./lib/goal-import-service");
-const { parseDiameterCm, getMeqFactor } = require("./lib/meq");
+const { parseDiameterCm, getMeqFactor, calculateSegmentMeq } = require("./lib/meq");
 const {
   buildDailyDashboard,
   buildWeeklyDashboard,
@@ -25,6 +26,7 @@ dotenv.config();
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 app.use((req, res, next) => {
   const requestOrigin = req.headers.origin;
@@ -191,6 +193,303 @@ function getWeekStartFromDate(dateText) {
   const day = date.getUTCDay() || 7;
   date.setUTCDate(date.getUTCDate() - day + 1);
   return formatUtcDate(date);
+}
+
+function normalizeLooseText(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[º°]/g, "")
+    .replace(/ø/gi, "diam")
+    .replace(/r\$/gi, "rs")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function normalizeCompactText(value) {
+  return normalizeLooseText(value).replace(/[^a-z0-9]+/g, "");
+}
+
+const EXPECTED_GOAL_HEADERS = [
+  "Data",
+  "Equipamento",
+  "N\u00ba Obra",
+  "Meta qtd estacas",
+  "\u00d81",
+  "Profundidade",
+  "Valor \u00d81",
+  "Meta qtd estacas",
+  "\u00d82",
+  "Profundidade",
+  "Valor (R$)",
+];
+
+function normalizeHeaderLabel(value) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .replace(/[ ]+\)/g, ")")
+    .trim();
+}
+
+function parseSpreadsheetDate(value) {
+  if (value == null || value === "") return null;
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return formatUtcDate(new Date(Date.UTC(value.getFullYear(), value.getMonth(), value.getDate())));
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const parsed = XLSX.SSF.parse_date_code(value);
+    if (parsed?.y && parsed?.m && parsed?.d) {
+      return formatUtcDate(new Date(Date.UTC(parsed.y, parsed.m - 1, parsed.d)));
+    }
+  }
+
+  const text = String(value).trim();
+  if (!text) return null;
+
+  const brMatch = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (brMatch) {
+    const [, day, month, yearRaw] = brMatch;
+    const year = yearRaw.length === 2 ? `20${yearRaw}` : yearRaw;
+    return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  }
+
+  const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) {
+    return text;
+  }
+
+  const date = new Date(text);
+  if (!Number.isNaN(date.getTime())) {
+    return formatUtcDate(new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())));
+  }
+
+  return null;
+}
+
+function parseSpreadsheetNumber(value) {
+  if (value == null || value === "") return 0;
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  const normalized = String(value)
+    .replace(/\./g, "")
+    .replace(",", ".")
+    .replace(/[^\d.-]/g, "")
+    .trim();
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isExpectedGoalHeaderRow(row) {
+  const compact = row.map(normalizeCompactText);
+  const expectedStart = [
+    "data",
+    "equipamento",
+    "nobra",
+    "metaquantidadedeestacas",
+    "diam1",
+    "profundidade",
+    "valordiam1",
+    "metaquantidadedeestacas",
+    "diam2",
+    "profundidade",
+    "valorrs",
+  ];
+
+  return expectedStart.every((item, index) => compact[index] === item);
+}
+
+function readGoalSheetRows(file) {
+  const workbook = XLSX.read(file.buffer, { type: "buffer", raw: true, cellDates: true });
+  const preferredSheetName = workbook.SheetNames.find((name) => String(name).trim().toLowerCase() === "teste");
+  const sheetName = preferredSheetName || workbook.SheetNames[0];
+  if (!sheetName) {
+    throw new Error("A planilha enviada nao contem abas legiveis.");
+  }
+
+  const sheet = workbook.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(sheet, {
+    header: 1,
+    raw: true,
+    defval: "",
+    blankrows: false,
+  });
+
+  const headerIndex = rows.findIndex(isExpectedGoalHeaderRow);
+  if (headerIndex === -1) {
+    throw new Error("Cabecalho invalido. Use o layout com Data, Equipamento, Nº Obra, Meta, Ø_1, Profundidade, Valor Ø_1, Meta, Ø_2, Profundidade, Valor(R$).");
+  }
+
+  return rows.slice(headerIndex + 1);
+}
+
+function isExpectedGoalHeaderRow(row) {
+  const normalizedRow = row.slice(0, EXPECTED_GOAL_HEADERS.length).map(normalizeHeaderLabel);
+  return EXPECTED_GOAL_HEADERS.every((item, index) => normalizedRow[index] === item);
+}
+
+function readGoalSheetRows(file) {
+  const workbook = XLSX.read(file.buffer, { type: "buffer", raw: true, cellDates: true });
+  const preferredSheetName = workbook.SheetNames.find((name) => String(name).trim().toLowerCase() === "teste");
+  const sheetName = preferredSheetName || workbook.SheetNames[0];
+  if (!sheetName) {
+    throw new Error("A planilha enviada nao contem abas legiveis.");
+  }
+
+  const sheet = workbook.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(sheet, {
+    header: 1,
+    raw: true,
+    defval: "",
+    blankrows: false,
+  });
+
+  const headerIndex = rows.findIndex(isExpectedGoalHeaderRow);
+  if (headerIndex === -1) {
+    throw new Error(`Cabecalho invalido. Use exatamente: ${EXPECTED_GOAL_HEADERS.join(" | ")}.`);
+  }
+
+  return rows.slice(headerIndex + 1);
+}
+
+function findBestMappingMatch({ equipmentLabel, obraCode, mappings }) {
+  const equipmentKey = normalizeCompactText(equipmentLabel);
+  const obraKey = normalizeCompactText(obraCode);
+  if (!equipmentKey) {
+    return { mapping: null, warnings: ["Equipamento vazio na planilha."] };
+  }
+
+  const exactCandidates = mappings.filter((item) => normalizeCompactText(item.machine_name) === equipmentKey);
+  const obraExactCandidates = obraKey
+    ? exactCandidates.filter((item) => normalizeCompactText(item.obra_code) === obraKey)
+    : [];
+
+  if (obraExactCandidates.length === 1) {
+    return { mapping: obraExactCandidates[0], warnings: [] };
+  }
+  if (exactCandidates.length === 1) {
+    const warnings = obraKey && normalizeCompactText(exactCandidates[0].obra_code) !== obraKey
+      ? ["Obra da planilha difere do vinculo ativo; mantido o Nº Obra do arquivo."]
+      : [];
+    return { mapping: exactCandidates[0], warnings };
+  }
+
+  const fuzzyCandidates = mappings.filter((item) => {
+    const machineKey = normalizeCompactText(item.machine_name);
+    return machineKey && (machineKey.includes(equipmentKey) || equipmentKey.includes(machineKey));
+  });
+
+  if (fuzzyCandidates.length === 1) {
+    return { mapping: fuzzyCandidates[0], warnings: ["Maquina reconhecida por nome aproximado. Revise antes de salvar."] };
+  }
+
+  if (exactCandidates.length > 1 || fuzzyCandidates.length > 1) {
+    return { mapping: null, warnings: ["Mais de um vinculo combina com o equipamento. Ajuste o cadastro ou remova a linha."] };
+  }
+
+  return { mapping: null, warnings: ["Maquina nao reconhecida no cadastro ativo."] };
+}
+
+async function parseGoalImportFile(file) {
+  if (!file?.buffer?.length) {
+    throw new Error("Arquivo de importacao vazio.");
+  }
+
+  const mappings = await adminStore.listActiveMappings();
+  const rows = readGoalSheetRows(file);
+  const items = [];
+
+  rows.forEach((row, index) => {
+    const equipmentLabel = String(row[1] || "").trim();
+    const obraCode = String(row[2] || "").trim();
+    const date = parseSpreadsheetDate(row[0]);
+    const sourceText = row.slice(0, 11).map((value) => String(value ?? "").trim()).filter(Boolean).join(" | ");
+
+    if (!date && !equipmentLabel && !obraCode && !sourceText) {
+      return;
+    }
+
+    const warnings = [];
+    const errors = [];
+
+    if (!date) errors.push("Data invalida ou ausente.");
+    if (!equipmentLabel) errors.push("Equipamento ausente.");
+
+    const segmentInputs = [
+      {
+        faixa: 1,
+        metaEstacas: Math.round(parseSpreadsheetNumber(row[3])),
+        diametroCm: parseDiameterCm(row[4]),
+        profundidadeM: parseSpreadsheetNumber(row[5]),
+        valor: parseSpreadsheetNumber(row[6]),
+      },
+      {
+        faixa: 2,
+        metaEstacas: Math.round(parseSpreadsheetNumber(row[7])),
+        diametroCm: parseDiameterCm(row[8]),
+        profundidadeM: parseSpreadsheetNumber(row[9]),
+        valor: parseSpreadsheetNumber(row[10]),
+      },
+    ];
+
+    const segments = [];
+    let totalMeq = 0;
+    let totalEstacas = 0;
+
+    segmentInputs.forEach((segment) => {
+      const hasAnyValue = [segment.metaEstacas, segment.diametroCm, segment.profundidadeM, segment.valor].some((value) => Number(value || 0) > 0);
+      if (!hasAnyValue) return;
+
+      if (!segment.metaEstacas) warnings.push(`Faixa ${segment.faixa} sem meta de estacas.`);
+      if (!segment.diametroCm) warnings.push(`Faixa ${segment.faixa} com diametro invalido.`);
+      if (!segment.profundidadeM) warnings.push(`Faixa ${segment.faixa} sem profundidade.`);
+
+      const meq = calculateSegmentMeq(segment.metaEstacas, segment.profundidadeM, segment.diametroCm);
+      totalEstacas += Number(segment.metaEstacas || 0);
+      totalMeq += Number(meq.metaMeqSegmento || 0);
+
+      segments.push({
+        faixa: segment.faixa,
+        meta_estacas: Number(segment.metaEstacas || 0),
+        diameter_cm: segment.diametroCm,
+        profundidade_m: Number(segment.profundidadeM || 0),
+        valor: Number(segment.valor || 0),
+        meq_factor: meq.meqFactor,
+        meta_meq_segmento: meq.metaMeqSegmento,
+      });
+    });
+
+    if (!segments.length) {
+      errors.push("Linha sem faixas de meta preenchidas.");
+    }
+
+    const match = findBestMappingMatch({ equipmentLabel, obraCode, mappings });
+    warnings.push(...match.warnings);
+
+    items.push({
+      source_row_number: index + 2,
+      date: date || "",
+      machine_name: match.mapping?.machine_name || "",
+      equipment_label: equipmentLabel,
+      imei: match.mapping?.imei || "",
+      obra_code: obraCode || match.mapping?.obra_code || "",
+      source_image_id: "",
+      source_file_name: file.originalname || "",
+      source_text: sourceText,
+      meta_estacas_total: totalEstacas,
+      meta_meq_total: Number(totalMeq.toFixed(2)),
+      meta_meq_informado: null,
+      segments,
+      warnings,
+      errors,
+    });
+  });
+
+  return items;
 }
 
 function parseCookies(req) {
@@ -1352,68 +1651,25 @@ app.get("/api/admin/goal-targets", requireAdmin, async (req, res) => {
   }
 });
 
-app.post("/api/admin/goal-imports/parse", requireAdmin, async (req, res) => {
+app.post("/api/admin/goal-imports/parse", requireAdmin, upload.single("file"), async (req, res) => {
   try {
-    const imageDataUrl = String(req.body?.imageDataUrl || "");
-    const fileName = String(req.body?.fileName || "");
-
-    if (!imageDataUrl) {
+    if (!req.file) {
       return res.status(400).json({
         ok: false,
-        message: "Imagem obrigatoria para importar metas.",
+        message: "Envie um arquivo .xlsx, .xls ou .csv.",
       });
     }
 
-    const machines = await adminStore.listMachines();
-    const parsed = await parseGoalImportImage({
-      imageDataUrl,
-      fileName,
-      machines,
-    });
-
+    const items = await parseGoalImportFile(req.file);
     return res.json({
       ok: true,
-      item: parsed,
+      items,
+      sourceFileName: req.file.originalname,
     });
   } catch (error) {
     return res.status(400).json({
       ok: false,
-      message: "Falha ao ler a imagem de metas.",
-      details: error.message,
-    });
-  }
-});
-
-app.post("/api/admin/goal-imports/parse-row", requireAdmin, async (req, res) => {
-  try {
-    const rawText = String(req.body?.rawText || "");
-    const sourceImageId = String(req.body?.importId || "");
-    const sourceFileName = String(req.body?.fileName || "");
-
-    if (!rawText.trim()) {
-      return res.status(400).json({
-        ok: false,
-        message: "Texto OCR obrigatorio para reinterpretar a linha.",
-      });
-    }
-
-    const machines = await adminStore.listMachines();
-    const rows = parseGoalImportText({
-      rawText,
-      machines,
-      sourceImageId,
-      sourceFileName,
-    });
-
-    return res.json({
-      ok: true,
-      item: rows[0] || null,
-      items: rows,
-    });
-  } catch (error) {
-    return res.status(400).json({
-      ok: false,
-      message: "Falha ao reinterpretar o texto OCR.",
+      message: "Falha ao ler planilha de metas.",
       details: error.message,
     });
   }
@@ -1421,34 +1677,26 @@ app.post("/api/admin/goal-imports/parse-row", requireAdmin, async (req, res) => 
 
 app.post("/api/admin/goal-imports/confirm", requireAdmin, async (req, res) => {
   try {
-    const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
-    const sourceImageId = String(req.body?.importId || "");
-    const sourceFileName = String(req.body?.fileName || "");
-
-    if (!rows.length) {
+    const items = Array.isArray(req.body?.items) ? req.body.items : [];
+    if (!items.length) {
       return res.status(400).json({
         ok: false,
         message: "Nenhuma linha enviada para confirmacao.",
       });
     }
 
-    const machines = await adminStore.listMachines();
-    const normalizedRows = normalizeGoalRows(rows, machines, {
-      sourceImageId,
-      sourceFileName,
-    });
-    const validRows = normalizedRows.filter((item) => !item.errors.length);
-    const rejectedRows = normalizedRows.filter((item) => item.errors.length);
-    const saved = await goalTargetStore.saveConfirmedGoals(validRows, {
-      confirmedBy: "admin",
-    });
+    const invalidItems = items.filter((item) => !item?.date || !item?.equipment_label || !Array.isArray(item?.segments) || !item.segments.length);
+    if (invalidItems.length) {
+      return res.status(400).json({
+        ok: false,
+        message: "Existem linhas incompletas no lote. Revise antes de salvar.",
+      });
+    }
 
+    const saved = await goalTargetStore.saveConfirmedGoals(items, { confirmedBy: "admin" });
     return res.json({
       ok: true,
-      savedCount: saved.length,
-      rejectedCount: rejectedRows.length,
       items: saved,
-      rejectedRows,
     });
   } catch (error) {
     return res.status(400).json({
@@ -2084,3 +2332,4 @@ if (!process.env.VERCEL) {
 }
 
 module.exports = app;
+
